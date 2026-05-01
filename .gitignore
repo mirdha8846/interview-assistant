@@ -1,0 +1,47 @@
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environments (CRITICAL: DO NOT PUSH API KEYS)
+.env
+.env.*
+!.env.example
+*.local
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Rust
+target/
+**/*/target/
+Cargo.lock (if you want to ensure consistent builds, keep this. If it's a library, ignore it. For apps, we usually keep it.)
+# Actually, for Tauri apps, keeping Cargo.lock is recommended.
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/bin/
+
+# React / Frontend Builds
+dist/
+dist-ssr/
+build/
+
+# Project specific
+liveapi.rs
+temp_overlay.rs
+*.log
