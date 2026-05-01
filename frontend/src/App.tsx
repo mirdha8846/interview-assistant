@@ -108,7 +108,8 @@ function App() {
         borderRadius: "16px",
         boxShadow: "0 10px 40px rgba(0, 0, 0, 0.5)",
         position: "relative",
-        overflow: "hidden"
+        overflow: "hidden",
+        minHeight: 0,
       }}>
         {/* Subtle Noise Texture for Premium Glass Look */}
         <div style={{
@@ -302,6 +303,9 @@ function App() {
             display: "flex",
             flexDirection: "column",
             gap: "16px",
+            minHeight: 0,
+            width: "100%",
+            boxSizing: "border-box",
           }}
           className="no-scrollbar"
         >
@@ -322,41 +326,82 @@ function App() {
 
           {aiResponse && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
               style={{
-                fontSize: "16px",
-                lineHeight: "1.6",
-                color: "#FFFFFF",
-                fontWeight: 500,
-                maxWidth: "100%",
-                textShadow: "0px 1px 2px rgba(0,0,0,0.8)",
+                fontSize: "15px",
+                lineHeight: "1.7",
+                color: "rgba(255, 255, 255, 0.95)",
+                fontWeight: 400,
+                width: "100%",
+                wordBreak: "break-word" as const,
               }}
             >
               <ReactMarkdown
                 components={{
+                  p: ({children}) => <p style={{ marginBottom: "16px", letterSpacing: "0.01em" }}>{children}</p>,
+                  strong: ({children}) => <strong style={{ color: "#00F0FF", fontWeight: 700, textShadow: "0 0 10px rgba(0, 240, 255, 0.2)" }}>{children}</strong>,
+                  em: ({children}) => <em style={{ color: "#FFD700", fontStyle: "italic" }}>{children}</em>,
+                  h1: ({children}) => <h1 style={{ color: "#00F0FF", fontSize: "22px", fontWeight: 800, margin: "24px 0 12px 0", letterSpacing: "-0.02em" }}>{children}</h1>,
+                  h2: ({children}) => <h2 style={{ color: "#00F0FF", fontSize: "19px", fontWeight: 700, margin: "20px 0 10px 0" }}>{children}</h2>,
+                  h3: ({children}) => <h3 style={{ color: "#00F0FF", fontSize: "17px", fontWeight: 700, margin: "16px 0 8px 0" }}>{children}</h3>,
+                  ul: ({children}) => <ul style={{ paddingLeft: "20px", marginBottom: "16px", listStyleType: "square" }}>{children}</ul>,
+                  ol: ({children}) => <ol style={{ paddingLeft: "20px", marginBottom: "16px" }}>{children}</ol>,
+                  li: ({children}) => <li style={{ marginBottom: "8px", color: "rgba(255, 255, 255, 0.85)" }}>{children}</li>,
+                  blockquote: ({children}) => (
+                    <blockquote style={{ 
+                      borderLeft: "4px solid #00F0FF", 
+                      paddingLeft: "16px", 
+                      margin: "16px 0", 
+                      color: "rgba(255, 255, 255, 0.6)",
+                      fontStyle: "italic",
+                      background: "rgba(0, 240, 255, 0.03)"
+                    }}>{children}</blockquote>
+                  ),
                   code({node, inline, className, children, ...props}: any) {
                     const match = /language-(\w+)/.exec(className || '')
                     return !inline && match ? (
-                      <SyntaxHighlighter
-                        {...props}
-                        children={String(children).replace(/\n$/, '')}
-                        style={vscDarkPlus}
-                        language={match[1]}
-                        PreTag="div"
-                        customStyle={{
-                          background: "rgba(10, 15, 30, 0.95)",
-                          border: "1px solid rgba(0, 240, 255, 0.4)",
-                          borderRadius: "8px",
-                          padding: "16px",
-                          marginTop: "12px",
-                          marginBottom: "12px",
-                          boxShadow: "0 4px 12px rgba(0, 240, 255, 0.15)",
-                          fontSize: "14px"
-                        }}
-                      />
+                      <div style={{ position: 'relative', margin: '20px 0' }}>
+                        <div style={{
+                          position: 'absolute',
+                          top: '-10px',
+                          right: '12px',
+                          padding: '2px 8px',
+                          background: 'rgba(0, 240, 255, 0.2)',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          color: '#00F0FF',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          zIndex: 1,
+                          backdropFilter: 'blur(4px)'
+                        }}>{match[1]}</div>
+                        <SyntaxHighlighter
+                          {...props}
+                          children={String(children).replace(/\n$/, '')}
+                          style={vscDarkPlus}
+                          language={match[1]}
+                          PreTag="div"
+                          customStyle={{
+                            background: "rgba(5, 8, 15, 0.98)",
+                            border: "1px solid rgba(0, 240, 255, 0.2)",
+                            borderRadius: "12px",
+                            padding: "20px",
+                            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+                            fontSize: "14px",
+                            margin: 0
+                          }}
+                        />
+                      </div>
                     ) : (
-                      <code {...props} className={className} style={{ background: "rgba(255,255,255,0.15)", padding: "2px 4px", borderRadius: "4px", color: "#00F0FF" }}>
+                      <code {...props} className={className} style={{ 
+                        background: "rgba(0, 240, 255, 0.15)", 
+                        padding: "2px 6px", 
+                        borderRadius: "4px", 
+                        color: "#00F0FF",
+                        fontFamily: "monospace",
+                        fontSize: "0.9em"
+                      }}>
                         {children}
                       </code>
                     )

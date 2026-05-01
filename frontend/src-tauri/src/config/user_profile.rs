@@ -44,7 +44,8 @@ pub enum ResponseStyle {
 
 impl UserProfile {
     pub fn is_configured(&self) -> bool {
-        !self.name.is_empty() && !self.skills.is_empty()
+        // Return true if any meaningful info is present
+        !self.name.is_empty() || !self.interview_notes.is_empty() || !self.summary.is_empty()
     }
     
     /// Generate skills string for AI context
@@ -77,7 +78,7 @@ pub fn get_ai_context() -> String {
             
             format!(
 r#"
-=== CANDIDATE PROFILE (Answer as if you are this person) ===
+=== CANDIDATE PROFILE (You are answering AS this person) ===
 
 Name: {}
 Current Role: {}
@@ -93,6 +94,9 @@ Professional Summary:
 Target Role: {}
 {}
 
+=== CRITICAL INTERVIEW CONTEXT & CUSTOM RULES ===
+{}
+
 === RESPONSE INSTRUCTIONS ===
 - Answer questions AS this candidate, using first person ("I", "my experience")
 - Reference their actual skills and experience when relevant
@@ -100,7 +104,6 @@ Target Role: {}
 {}
 - Keep answers interview-appropriate (professional but personable)
 - If asked about experience you don't have, be honest but pivot to related skills
-
 "#,
                 profile.name,
                 profile.current_role,
@@ -119,6 +122,7 @@ Target Role: {}
                 } else {
                     String::new()
                 },
+                profile.interview_notes,
                 style_instruction,
                 examples_note
             )
