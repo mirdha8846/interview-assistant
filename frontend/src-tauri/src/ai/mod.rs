@@ -70,6 +70,11 @@ lazy_static::lazy_static! {
 pub enum AIModel {
     OpenRouterGemini,
     OpenRouterMistral,
+    OpenRouterLlama33,
+    OpenRouterQwen36Plus,
+    OpenRouterDevstral2,
+    OpenRouterDeepSeekR1,
+    OpenRouterNemotron3,
     ClaudeOpus,
     GroqLlama3,
     LocalOllama,
@@ -80,6 +85,11 @@ impl AIModel {
         match self {
             AIModel::OpenRouterGemini => "OpenRouter Gemini 2.5 Flash",
             AIModel::OpenRouterMistral => "OpenRouter Mistral 7B Instruct",
+            AIModel::OpenRouterLlama33 => "OpenRouter Llama 3.3 70B",
+            AIModel::OpenRouterQwen36Plus => "OpenRouter Qwen 3.6 Plus",
+            AIModel::OpenRouterDevstral2 => "OpenRouter Devstral 2",
+            AIModel::OpenRouterDeepSeekR1 => "OpenRouter DeepSeek R1",
+            AIModel::OpenRouterNemotron3 => "OpenRouter Nemotron 3 Super",
             AIModel::ClaudeOpus => "Claude Opus",
             AIModel::GroqLlama3 => "Groq LLaMA 3.3",
             AIModel::LocalOllama => "Local Ollama (Phi)",
@@ -90,6 +100,11 @@ impl AIModel {
         match self {
             AIModel::OpenRouterGemini => "google/gemini-2.5-flash",
             AIModel::OpenRouterMistral => "mistralai/mistral-7b-instruct-v0.1",
+            AIModel::OpenRouterLlama33 => "meta-llama/llama-3.3-70b-instruct:nitro",
+            AIModel::OpenRouterQwen36Plus => "qwen/qwen3.6-plus:nitro",
+            AIModel::OpenRouterDevstral2 => "mistralai/devstral-2512:nitro",
+            AIModel::OpenRouterDeepSeekR1 => "deepseek/deepseek-r1:nitro",
+            AIModel::OpenRouterNemotron3 => "nvidia/nemotron-3-super-120b-a12b:nitro",
             AIModel::ClaudeOpus => "claude-3-opus-20240229",
             AIModel::GroqLlama3 => "llama-3.3-70b-versatile",
             AIModel::LocalOllama => "phi",
@@ -99,13 +114,22 @@ impl AIModel {
     pub fn is_gemini(&self) -> bool {
         matches!(self, AIModel::OpenRouterGemini)
     }
+
+    pub fn supports_images(&self) -> bool {
+        matches!(self, AIModel::OpenRouterGemini)
+    }
     
     pub fn from_index(index: usize) -> Self {
-        match index % 5 {
+        match index % 10 {
              0 => AIModel::OpenRouterGemini,
              1 => AIModel::OpenRouterMistral,
-             2 => AIModel::GroqLlama3,
-             3 => AIModel::ClaudeOpus,
+             2 => AIModel::OpenRouterLlama33,
+             3 => AIModel::OpenRouterQwen36Plus,
+             4 => AIModel::OpenRouterDevstral2,
+             5 => AIModel::OpenRouterDeepSeekR1,
+             6 => AIModel::OpenRouterNemotron3,
+             7 => AIModel::GroqLlama3,
+             8 => AIModel::ClaudeOpus,
              _ => AIModel::LocalOllama,
         }
     }
@@ -123,7 +147,7 @@ pub fn get_current_model_name() -> String {
 
 pub fn cycle_model() -> AIModel {
     let current = CURRENT_MODEL_INDEX.load(Ordering::SeqCst);
-    let next = (current + 1) % 5;
+    let next = (current + 1) % 10;
     CURRENT_MODEL_INDEX.store(next, Ordering::SeqCst);
     let model = AIModel::from_index(next);
     crate::log_info!("Switched to model: {}", model.name());

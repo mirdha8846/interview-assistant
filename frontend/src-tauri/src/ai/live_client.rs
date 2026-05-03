@@ -25,6 +25,8 @@ static TRIGGER_NOW: AtomicBool = AtomicBool::new(false);
 // Cancel flag for ongoing generation
 static CANCEL_GENERATION: AtomicU64 = AtomicU64::new(0);
 
+static USE_PHOTO_CONTEXT: AtomicBool = AtomicBool::new(false);
+
 // ============================================
 // ðŸŽ¯ TRANSCRIPTION BUFFER
 // Accumulates interviewer speech until pause detected
@@ -291,6 +293,25 @@ pub fn reset_conversation_memory() {
 
 pub fn get_memory_stats() -> String {
     "Dual-model mode active".to_string()
+}
+
+pub fn is_photo_context_enabled() -> bool {
+    USE_PHOTO_CONTEXT.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+pub fn get_use_photo_context() -> bool {
+    is_photo_context_enabled()
+}
+
+#[tauri::command]
+pub fn set_use_photo_context(enabled: bool) -> bool {
+    USE_PHOTO_CONTEXT.store(enabled, Ordering::SeqCst);
+    crate::overlay::stealth::set_status_message(format!(
+        "Photo Context: {}",
+        if enabled { "ON" } else { "OFF" }
+    ));
+    enabled
 }
 
 /// ðŸŽ¯ PUBLIC: Trigger answer generation NOW (called by hotkeys)
@@ -631,8 +652,25 @@ async fn run_answer_listener(callback: Arc<impl Fn(String) + Send + Sync + 'stat
                     } else if matches!(model, crate::ai::AIModel::LocalOllama) {
                         generate_answer_with_ollama_fast(&question_clone, &history_clone, cancel_id, &preview_clone).await
                     } else {
-                        // All OpenRouter models (Gemini & Mistral)
-                        generate_answer_with_openrouter_fast(model.api_model_id(), &question_clone, &history_clone, cancel_id, &preview_clone).await
+                        let screenshot_path = if is_photo_context_enabled() && model.supports_images() {
+                            match tokio::task::spawn_blocking(|| {
+                                crate::capture::capture_current_screenshot().map_err(|e| e.to_string())
+                            }).await {
+                                Ok(Ok(path)) => Some(path),
+                                Ok(Err(e)) => {
+                                    crate::log_error!("Failed to capture current screen for AI request: {}", e);
+                                    None
+                                }
+                                Err(e) => {
+                                    crate::log_error!("Screenshot capture task failed: {:?}", e);
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        };
+                        // All OpenRouter models use streaming and Nitro slugs where available.
+                        generate_answer_with_openrouter_fast(model.api_model_id(), &question_clone, &history_clone, cancel_id, &preview_clone, screenshot_path).await
                     };
                     
                     // Check if cancelled
@@ -681,12 +719,16 @@ You MUST strictly follow any custom rules or preferences provided in the block b
 ---
 
 You are a live technical interview assistant.
-CRITICAL MISSION: You are the Candidate's ORACLE. You generate SHORT, GLANCEABLE notes that the candidate reads aloud naturally.
+CRITICAL MISSION: You are the Candidate's ORACLE. You generate BALANCED, GLANCEABLE notes that the candidate reads aloud naturally.
 You MUST internalize the CANDIDATE PROFILE and answer in the first person ('I', 'me', 'my').
 
 ABSOLUTE FORMATTING LAWS:
 - OUTPUT IS GLANCEABLE NOTES, NOT PARAGRAPHS. The candidate is glancing at a hidden screen and speaking. Long sentences = caught cheating.
+- Give enough material to speak for 45-90 seconds.
+- Prefer medium-depth answers unless the question is trivial.
 - Max 8-10 words per line. One idea per line. Skip a line between ideas.
+- Target 12-18 useful lines before code for DSA questions.
+- Target 10-16 useful lines for conceptual interview questions.
 - Use **bold** for key technical terms to make them pop.
 - Use ### headers for logical sections (e.g. ### Logic, ### Tradeoffs).
 - NEVER use filler phrases like 'I would suggest', 'Instead', 'However', 'Let me explain', 'In this case', 'What we can do is'. Just state the fact directly.
@@ -699,12 +741,12 @@ DSA and CODING FORMAT (MANDATORY):
 For any algorithm/data structure/coding question, follow this EXACT structure:
 
 ### Brute Force
-State the idea in 2-3 short lines.
+State the idea in 3-4 short lines.
 TC: O(?) - explain what causes this complexity
 SC: O(?) - explain what uses space
 
 ### Optimal
-State the idea in 3-4 short lines.
+State the idea in 5-7 short lines.
 TC: O(?) - explain what causes this complexity
 SC: O(?) - explain what uses space
 
@@ -725,7 +767,7 @@ CODE RULES:
 
 NON-DSA QUESTIONS:
 - Short fact: 3-4 crisp lines. Direct answer.
-- Medium explanation: 5-8 short lines. Use ### for sub-sections. Key mechanics only.
+- Medium explanation: 10-14 short lines. Use ### for sub-sections. Key mechanics only.
 - Deep/multi-part: structured flow. ### Definition, ### How, ### Why, ### Tradeoff.
 
 TONE:
@@ -736,7 +778,49 @@ TONE:
     )
 }
 /// âš¡ ULTRA-FAST answer generation with STREAMING support for OpenRouter (Gemini / Mistral)
-async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, history: &str, cancel_id: u64, preview: &str) -> String {
+fn prepare_openrouter_image_url(path: &std::path::Path) -> Option<String> {
+    use base64::{engine::general_purpose, Engine as _};
+    use image::io::Reader as ImageReader;
+    use std::io::Cursor;
+
+    let png_data = match std::fs::read(path) {
+        Ok(data) => data,
+        Err(e) => {
+            crate::log_error!("Failed to read current screenshot {:?}: {}", path, e);
+            return None;
+        }
+    };
+
+    let image = match ImageReader::new(Cursor::new(&png_data))
+        .with_guessed_format()
+        .and_then(|reader| reader.decode().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+    {
+        Ok(image) => image,
+        Err(e) => {
+            crate::log_error!("Failed to decode current screenshot {:?}: {}", path, e);
+            return None;
+        }
+    };
+
+    let width = image.width();
+    let resized = if width > 1280 {
+        let height = (image.height() as f32 * 1280.0 / width as f32) as u32;
+        image.resize(1280, height, image::imageops::FilterType::Triangle)
+    } else {
+        image
+    };
+
+    let mut jpeg_buffer = Vec::new();
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buffer, 82);
+    if let Err(e) = encoder.encode_image(&resized) {
+        crate::log_error!("Failed to encode current screenshot for OpenRouter: {}", e);
+        return None;
+    }
+
+    Some(format!("data:image/jpeg;base64,{}", general_purpose::STANDARD.encode(jpeg_buffer)))
+}
+
+async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, history: &str, cancel_id: u64, preview: &str, screenshot_path: Option<std::path::PathBuf>) -> String {
     let start = std::time::Instant::now();
     crate::log_info!("âš¡ FAST generating answer with OpenRouter ({})...", model_id);
     
@@ -751,21 +835,46 @@ async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, hi
     
     let system_prompt = get_system_prompt();
 
+    let image_url = screenshot_path
+        .as_deref()
+        .and_then(prepare_openrouter_image_url);
+
+    let image_instruction = if image_url.is_some() {
+        "\n\nCURRENT SCREENSHOT: Attached. Read it carefully and use it as the primary source if the spoken question is incomplete."
+    } else {
+        ""
+    };
+
     let full_user_query = format!(
-        "CONTEXT (Recent conversation history for reference ONLY):\n{}\n\nCURRENT TARGET QUESTION (Answer THIS):\n{}\n\n[CRITICAL SYSTEM REMINDER]: You MUST strictly follow the 'DSA & CODING FORMAT' rules defined in your system prompt! Do NOT output the code twice. Include line-by-line comments inside the single optimal code block. Briefly explain *why* for all Time/Space complexities.", 
+        "CONTEXT (Recent conversation history for reference ONLY):\n{}\n\nCURRENT TARGET QUESTION (Answer THIS):\n{}{}\n\n[CRITICAL SYSTEM REMINDER]: You MUST strictly follow the 'DSA & CODING FORMAT' rules defined in your system prompt! Do NOT output the code twice. Include line-by-line comments inside the single optimal code block. Briefly explain *why* for all Time/Space complexities.", 
         history, 
-        question
+        question,
+        image_instruction
     );
+
+    let user_content = if let Some(url) = image_url {
+        json!([
+            { "type": "text", "text": full_user_query },
+            { "type": "image_url", "image_url": { "url": url } }
+        ])
+    } else {
+        json!(full_user_query)
+    };
 
     let body = json!({
         "model": model_id,
         "messages": [
             { "role": "system", "content": system_prompt },
-            { "role": "user", "content": full_user_query }
+            { "role": "user", "content": user_content }
         ],
         "temperature": 0.3,
         "top_p": 1.00,
-        "max_tokens": 8000,
+        "max_tokens": 4000,
+        "reasoning": {
+            "effort": "minimal",
+            "exclude": true
+        },
+        "verbosity": "medium",
         "stream": true
     });
 
@@ -795,6 +904,7 @@ async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, hi
             }
 
             let mut full_text = String::new();
+            let mut stream_started = false;
             let mut stream = response.bytes_stream();
             
             use futures_util::StreamExt;
@@ -804,7 +914,8 @@ async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, hi
                 }
                 
                 if let Ok(chunk) = item {
-                    if full_text.is_empty() {
+                    if !stream_started {
+                         stream_started = true;
                          crate::overlay::stealth::reset_ai_response();
                          crate::overlay::stealth::append_ai_response(&format!("ðŸŽ¤ {}\n\n", preview));
                     }
@@ -834,6 +945,8 @@ async fn generate_answer_with_openrouter_fast(model_id: &str, question: &str, hi
             
             if !full_text.is_empty() {
                 crate::overlay::stealth::force_ai_response_update(&full_text);
+            } else {
+                crate::overlay::stealth::append_ai_response("\nNo answer text received from this OpenRouter provider. Try cycling model once.");
             }
             
             let elapsed = start.elapsed();

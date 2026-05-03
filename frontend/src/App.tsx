@@ -20,6 +20,7 @@ function App() {
   const [transcription, setTranscription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [usePhoto, setUsePhoto] = useState(false);
   
   // Profile state
   const [profile, setProfile] = useState<UserProfile>({
@@ -38,6 +39,7 @@ function App() {
       setProfile(p);
       if (!p.name) setShowSetup(true); // Show setup if not configured
     });
+    invoke<boolean>("get_use_photo_context").then(setUsePhoto);
   }, []);
 
   useEffect(() => {
@@ -80,6 +82,19 @@ function App() {
     await invoke("save_user_profile", { profile });
     setShowSetup(false);
     setStatusMsg("Profile Saved ✅");
+  };
+
+  const toggleUsePhoto = async () => {
+    const next = !usePhoto;
+    setUsePhoto(next);
+    try {
+      const saved = await invoke<boolean>("set_use_photo_context", { enabled: next });
+      setUsePhoto(saved);
+      setStatusMsg(`Photo ${saved ? "ON" : "OFF"}`);
+    } catch {
+      setUsePhoto(!next);
+      setStatusMsg("Photo toggle failed");
+    }
   };
 
   return (
@@ -262,6 +277,32 @@ function App() {
                     borderRadius: "4px",
                 }}>{statusMsg}</motion.span>
             )}
+            <button
+                onClick={toggleUsePhoto}
+                title="Send current screen with supported AI models"
+                aria-pressed={usePhoto}
+                style={{
+                    height: "24px",
+                    minWidth: "58px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "5px",
+                    background: usePhoto ? "rgba(0, 240, 255, 0.18)" : "rgba(255, 255, 255, 0.06)",
+                    color: usePhoto ? "#00F0FF" : "rgba(255,255,255,0.45)",
+                    border: usePhoto ? "1px solid rgba(0, 240, 255, 0.45)" : "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    boxShadow: usePhoto ? "0 0 12px rgba(0, 240, 255, 0.12)" : "none",
+                }}
+            >
+                <span aria-hidden="true">📷</span>
+                <span>{usePhoto ? "On" : "Off"}</span>
+            </button>
             <button 
                 onClick={() => setShowSetup(true)}
                 style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(0,0,0,0.4)", fontSize: "14px" }}

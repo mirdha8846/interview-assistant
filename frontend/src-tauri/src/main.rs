@@ -200,6 +200,8 @@ fn main() {
             config::user_profile::load_user_profile,
             config::user_profile::save_user_profile,
             config::user_profile::update_interview_context,
+            ai::live_client::get_use_photo_context,
+            ai::live_client::set_use_photo_context,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

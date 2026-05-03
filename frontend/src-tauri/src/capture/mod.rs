@@ -34,22 +34,22 @@ pub fn init() {
 
 pub fn take_screenshot() {
     crate::log_info!("Taking screenshot...");
+    if let Err(e) = capture_current_screenshot() {
+        crate::log_error!("Failed to take screenshot: {:?}", e);
+    }
+}
+
+pub fn capture_current_screenshot() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    crate::log_info!("Taking current screen screenshot...");
     unsafe {
         // DXGI is returning black screens, forcing GDI for reliability
         // let result = capture_dxgi().or_else(|_| capture_gdi());
-        let result = capture_gdi();
-        
-        match result {
-            Ok(path) => {
-                let count = SCREENSHOT_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-                crate::log_info!("Screenshot #{} saved securely to: {:?}", count, path);
-                let mut last = LAST_SCREENSHOT_PATH.lock().unwrap();
-                *last = Some(path);
-            },
-            Err(e) => {
-                crate::log_error!("Failed to take screenshot: {:?}", e);
-            }
-        }
+        let path = capture_gdi()?;
+        let count = SCREENSHOT_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+        crate::log_info!("Screenshot #{} saved securely to: {:?}", count, path);
+        let mut last = LAST_SCREENSHOT_PATH.lock().unwrap();
+        *last = Some(path.clone());
+        Ok(path)
     }
 }
 
